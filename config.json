@@ -1,0 +1,21 @@
+{
+    "whisper_model": "base",
+    "screenshot_interval": 30,
+    "screenshot_quality": 95,
+    "output_format": "markdown",
+    "enable_diarization": true,
+    "enable_visual_analysis": true,
+    "visual_similarity_threshold": 0.3,
+    "min_speaker_duration": 1.0,
+    "output_dir": "./output",
+    "supported_formats": [
+        ".mp4",
+        ".mov",
+        ".avi",
+        ".mkv",
+        ".webm"
+    ],
+    "audio_sample_rate": 16000,
+    "max_video_size_mb": 500,
+    "temp_cleanup": true
+}
