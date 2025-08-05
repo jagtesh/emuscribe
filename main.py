@@ -90,7 +90,7 @@ class VideoTranscriber:
             },
             "transcript": {
                 "segments": transcript_segments,
-                "speakers": list(set(seg.get("speaker", "Unknown") for seg in transcript_segments))
+                "speakers": sorted(list(set(seg.get("speaker", "Unknown") for seg in transcript_segments)))
             },
             "visual": {
                 "frames": [
@@ -233,6 +233,10 @@ class VideoTranscriber:
         """Extract frames at specified timestamps"""
         self.logger.info("Extracting video frames...")
 
+        # Create frames subdirectory
+        frames_dir = os.path.join(output_dir, "frames")
+        os.makedirs(frames_dir, exist_ok=True)
+
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
         frames = []
@@ -244,7 +248,7 @@ class VideoTranscriber:
 
             if ret:
                 filename = f"frame_{i:04d}_{timestamp:.2f}s.jpg"
-                filepath = os.path.join(output_dir, filename)
+                filepath = os.path.join(frames_dir, filename)
 
                 # Save frame
                 cv2.imwrite(
@@ -255,6 +259,7 @@ class VideoTranscriber:
 
                 frames.append(
                     {
+                        "index": i,
                         "timestamp": timestamp,
                         "filename": filename,
                         "filepath": filepath,
@@ -508,121 +513,7 @@ class VideoTranscriber:
             self.logger.error(f"PDF generation failed: {e}")
             return None
 
-    def generate_markdown_output(
-        self, transcript_segments, frames, visual_matches, video_path, output_dir
-    ):
-        """Generate markdown output with embedded screenshots"""
-        self.logger.info("Generating markdown output...")
 
-        video_name = Path(video_path).stem
-        markdown_content = []
-
-        # Header
-        markdown_content.append(f"# Transcript: {video_name}")
-        markdown_content.append(
-            f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
-        markdown_content.append(
-            f"**Duration:** {self.format_timestamp(transcript_segments[-1]['end'])}"
-        )
-        markdown_content.append("")
-
-        # Summary section
-        markdown_content.append("## Summary")
-        markdown_content.append("*Auto-generated summary would go here*")
-        markdown_content.append("")
-
-        # Speakers section
-        speakers = set(seg.get("speaker", "Unknown") for seg in transcript_segments)
-        if len(speakers) > 1:
-            markdown_content.append("## Speakers")
-            for i, speaker in enumerate(sorted(speakers), 1):
-                markdown_content.append(f"- **{speaker}**")
-            markdown_content.append("")
-
-        # Transcript with timestamps and screenshots
-        markdown_content.append("## Transcript")
-        markdown_content.append("")
-
-        current_speaker = None
-
-        for segment in transcript_segments:
-            timestamp = self.format_timestamp(segment["start"])
-            speaker = segment.get("speaker", "Unknown")
-            text = segment["text"].strip()
-
-            # Add speaker change
-            if speaker != current_speaker:
-                if current_speaker is not None:
-                    markdown_content.append("")
-                markdown_content.append(f"### {speaker}")
-                current_speaker = speaker
-
-            # Add timestamp and text
-            markdown_content.append(f"**[{timestamp}]** {text}")
-
-            # Add relevant screenshots
-            relevant_frames = [
-                vm
-                for vm in visual_matches
-                if vm["segment"]["start"] == segment["start"]
-            ]
-
-            for match in relevant_frames:
-                frame_path = match["frame"]["filepath"]
-                rel_path = os.path.relpath(frame_path, output_dir)
-                markdown_content.append(f"![Screenshot at {timestamp}]({rel_path})")
-                markdown_content.append("")
-
-        # Write markdown file
-        markdown_file = os.path.join(output_dir, f"{video_name}_transcript.md")
-        with open(markdown_file, "w", encoding="utf-8") as f:
-            f.write("\n".join(markdown_content))
-
-        return markdown_file
-
-    def export_to_html(self, markdown_file, output_dir):
-        """Export markdown to HTML with embedded images"""
-        self.logger.info("Exporting to HTML...")
-
-        with open(markdown_file, "r", encoding="utf-8") as f:
-            md_content = f.read()
-
-        # Convert markdown to HTML
-        html_content = markdown.markdown(md_content, extensions=["extra", "codehilite"])
-
-        # Embed images as base64
-        html_with_embedded = self.embed_images_in_html(
-            html_content, os.path.dirname(markdown_file)
-        )
-
-        # Create complete HTML document
-        full_html = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Video Transcript</title>
-    <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
-               max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; }}
-        img {{ max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px; }}
-        pre {{ background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto; }}
-        h1, h2, h3 {{ color: #333; }}
-        .timestamp {{ color: #666; font-weight: bold; }}
-    </style>
-</head>
-<body>
-{html_with_embedded}
-</body>
-</html>
-        """
-
-        html_file = markdown_file.replace(".md", ".html")
-        with open(html_file, "w", encoding="utf-8") as f:
-            f.write(full_html)
-
-        return html_file
 
     def embed_images_in_html(self, html_content, base_path):
         """Embed images as base64 in HTML"""
@@ -643,24 +534,6 @@ class VideoTranscriber:
             r'<img src="([^"]+)" alt="([^"]*)"[^>]*>', replace_img, html_content
         )
 
-    def export_to_pdf(self, html_file, output_dir):
-        """Export HTML to PDF"""
-        self.logger.info("Exporting to PDF...")
-
-        pdf_file = html_file.replace(".html", ".pdf")
-
-        try:
-            # Check if weasyprint is available
-            try:
-                import weasyprint
-                weasyprint.HTML(filename=html_file).write_pdf(pdf_file)
-                return pdf_file
-            except ImportError:
-                self.logger.error("weasyprint not available - PDF export disabled")
-                return None
-        except Exception as e:
-            self.logger.error(f"PDF export failed: {e}")
-            return None
 
     def format_timestamp(self, seconds):
         """Format timestamp as HH:MM:SS"""
@@ -683,6 +556,24 @@ class VideoTranscriber:
         temp_dir = tempfile.mkdtemp()
 
         try:
+            # Check if processed data already exists
+            json_file = os.path.join(output_dir, f"{video_name}_processed.json")
+            if os.path.exists(json_file):
+                self.logger.info(f"Found existing processed data: {json_file}")
+                self.logger.info("Using existing data. Delete the JSON file to reprocess from scratch.")
+                
+                # Export to requested format using existing data
+                output_file = self.export_from_json(
+                    json_file, self.config["output_format"], output_dir
+                )
+                
+                results = {
+                    "processed_data": json_file,
+                    self.config["output_format"]: output_file
+                }
+                
+                return results
+            
             # Extract audio
             audio_path = os.path.join(temp_dir, f"{video_name}.wav")
             self.extract_audio(video_path, audio_path)
@@ -702,7 +593,15 @@ class VideoTranscriber:
             frame_timestamps = []
 
             # Regular interval screenshots
-            duration = transcript["segments"][-1]["end"]
+            if transcript["segments"]:
+                segments = transcript["segments"]
+                if isinstance(segments, list) and len(segments) > 0:
+                    last_segment = segments[-1]
+                    duration = last_segment.get("end", 0)
+                else:
+                    duration = 0
+            else:
+                duration = 0
             for t in np.arange(0, duration, self.config["screenshot_interval"]):
                 frame_timestamps.append(t)
 
@@ -712,22 +611,20 @@ class VideoTranscriber:
             # Analyze visual content
             visual_matches = self.analyze_visual_content(frames, merged_segments)
 
-            # Generate markdown output
-            markdown_file = self.generate_markdown_output(
-                merged_segments, frames, visual_matches, video_path, output_dir
+            # Save processed data to JSON for future re-exports
+            json_file = self.save_processed_data(
+                video_path, merged_segments, frames, visual_matches, output_dir
             )
 
-            # Export to other formats
-            results = {"markdown": markdown_file}
+            # Export to requested format using the stored data
+            output_file = self.export_from_json(
+                json_file, self.config["output_format"], output_dir
+            )
 
-            if self.config["output_format"] in ["html", "pdf"]:
-                html_file = self.export_to_html(markdown_file, output_dir)
-                results["html"] = html_file
-
-                if self.config["output_format"] == "pdf":
-                    pdf_file = self.export_to_pdf(html_file, output_dir)
-                    if pdf_file:
-                        results["pdf"] = pdf_file
+            results = {
+                "processed_data": json_file,
+                self.config["output_format"]: output_file
+            }
 
             self.logger.info(f"Processing complete! Output files: {results}")
             return results
@@ -741,45 +638,87 @@ def main():
     parser = argparse.ArgumentParser(
         description="Video Transcription Tool with AI and Diarization"
     )
-    parser.add_argument("video", help="Path to video file")
-    parser.add_argument("-o", "--output", help="Output directory", default="./output")
-    parser.add_argument("-c", "--config", help="Configuration file path")
-    parser.add_argument(
+    
+    # Create subparsers for different commands
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    
+    # Process command (default behavior)
+    process_parser = subparsers.add_parser("process", help="Process a video file")
+    process_parser.add_argument("video", help="Path to video file")
+    process_parser.add_argument("-o", "--output", help="Output directory", default="./output")
+    process_parser.add_argument("-c", "--config", help="Configuration file path")
+    process_parser.add_argument(
         "--format",
         choices=["markdown", "html", "pdf"],
         default="markdown",
         help="Output format",
     )
-    parser.add_argument(
+    process_parser.add_argument(
         "--no-diarization", action="store_true", help="Disable speaker diarization"
     )
-    parser.add_argument(
+    process_parser.add_argument(
         "--no-visual", action="store_true", help="Disable visual analysis"
     )
-    parser.add_argument(
+    process_parser.add_argument(
         "--interval", type=int, default=30, help="Screenshot interval in seconds"
     )
-
+    
+    # Export command (for re-exporting from stored data)
+    export_parser = subparsers.add_parser("export", help="Export from previously processed data")
+    export_parser.add_argument("json_file", help="Path to processed JSON file")
+    export_parser.add_argument(
+        "--format",
+        choices=["markdown", "html", "pdf"],
+        required=True,
+        help="Export format",
+    )
+    export_parser.add_argument("-o", "--output", help="Output directory (defaults to JSON file directory)")
+    export_parser.add_argument("-c", "--config", help="Configuration file path")
+    
+    # Legacy support: if first argument looks like a video file, use process command
+    if len(sys.argv) > 1 and not sys.argv[1].startswith('-') and sys.argv[1] not in ['process', 'export']:
+        # Insert 'process' command for backward compatibility
+        sys.argv.insert(1, 'process')
+    
     args = parser.parse_args()
-
+    
+    # If no command specified, show help
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
+    
     # Create transcriber
     transcriber = VideoTranscriber(args.config)
-
-    # Override config with command line arguments
-    if args.no_diarization:
-        transcriber.config["enable_diarization"] = False
-    if args.no_visual:
-        transcriber.config["enable_visual_analysis"] = False
-    transcriber.config["output_format"] = args.format
-    transcriber.config["screenshot_interval"] = args.interval
-
+    
     try:
-        results = transcriber.process_video(args.video, args.output)
-        print("\n✅ Processing complete!")
-        print(f"📁 Output directory: {args.output}")
-        for format_type, file_path in results.items():
-            print(f"📄 {format_type.upper()}: {file_path}")
-
+        if args.command == "process":
+            # Override config with command line arguments
+            if hasattr(args, 'no_diarization') and args.no_diarization:
+                transcriber.config["enable_diarization"] = False
+            if hasattr(args, 'no_visual') and args.no_visual:
+                transcriber.config["enable_visual_analysis"] = False
+            transcriber.config["output_format"] = args.format
+            if hasattr(args, 'interval'):
+                transcriber.config["screenshot_interval"] = args.interval
+            
+            results = transcriber.process_video(args.video, args.output)
+            print("\n✅ Processing complete!")
+            print(f"📁 Output directory: {args.output}")
+            for format_type, file_path in results.items():
+                print(f"📄 {format_type.upper()}: {file_path}")
+                
+        elif args.command == "export":
+            if not os.path.exists(args.json_file):
+                print(f"❌ Error: JSON file not found: {args.json_file}")
+                sys.exit(1)
+                
+            output_file = transcriber.export_from_json(
+                args.json_file, args.format, args.output
+            )
+            
+            print("\n✅ Export complete!")
+            print(f"📄 {args.format.upper()}: {output_file}")
+            
     except Exception as e:
         print(f"❌ Error: {e}")
         sys.exit(1)
