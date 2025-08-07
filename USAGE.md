@@ -71,6 +71,50 @@ The JSON file contains:
 4. **Selective Re-processing**: Delete JSON file to reprocess from scratch
 5. **Asset Management**: All screenshots organized in frames/ subdirectory
 
+## Apple Silicon Optimization
+
+On Apple Silicon Macs (M1/M2/M3), the tool provides multiple optimized backends for maximum performance:
+
+### Whisper Backends
+
+**faster-whisper (Recommended)**
+- **5x faster loading**: 0.3s vs 1.8s model initialization
+- **Apple Silicon optimized**: Built on CTranslate2 with ARM64 optimizations
+- **Memory efficient**: Uses quantized int8 models by default
+- **Better performance**: Leverages Apple's optimized BLAS libraries
+
+**openai-whisper (Fallback)**
+- **MPS compatibility issues**: Falls back to CPU due to PyTorch sparse tensor limitations
+- **Slower but compatible**: Works when faster-whisper has issues
+
+### Backend Configuration
+
+```json
+{
+  "whisper_backend": "faster-whisper",  // "faster-whisper" or "openai-whisper"
+  "compute_type": "auto",               // auto, int8, int8_float32, float16, float32
+  "device": "auto",                     // auto, cpu, mps, cuda
+  "force_cpu": false                    // Force CPU even if GPU available
+}
+```
+
+### Command Line Override
+
+```bash
+# Use faster-whisper (recommended)
+python main.py process video.mp4 --backend faster-whisper
+
+# Use OpenAI Whisper 
+python main.py process video.mp4 --backend openai-whisper
+```
+
+### Performance Benefits
+
+- **faster-whisper**: ~5x faster model loading, optimized ARM64 inference
+- **Quantization**: int8 models provide excellent speed/quality balance
+- **Apple Silicon**: Leverages optimized linear algebra libraries
+- **Memory Efficiency**: Lower memory usage with quantized models
+
 ## Smart Caching
 
 The tool automatically detects if processed data already exists and uses it instead of reprocessing, making subsequent runs much faster.

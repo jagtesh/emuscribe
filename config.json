@@ -8,6 +8,10 @@
     "visual_similarity_threshold": 0.3,
     "min_speaker_duration": 1.0,
     "output_dir": "./output",
+    "device": "auto",
+    "force_cpu": false,
+    "whisper_backend": "faster-whisper",
+    "compute_type": "auto",
     "supported_formats": [
         ".mp4",
         ".mov",

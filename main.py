@@ -22,9 +22,15 @@ import markdown
 import numpy as np
 import soundfile as sf
 import torch
-# import weasyprint  # Temporarily disabled due to system lib issues
 import whisper
+from faster_whisper import WhisperModel
 from PIL import Image
+# import weasyprint  # Temporarily disabled due to system lib issues
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib.colors import gray
 # from pyannote.audio import Pipeline  # Temporarily disabled
 # from transformers import CLIPModel, CLIPProcessor  # Temporarily disabled
 
@@ -33,7 +39,7 @@ class VideoTranscriber:
     def __init__(self, config_path=None):
         self.config = self.load_config(config_path)
         self.setup_logging()
-        self.setup_models()
+        self.models_initialized = False
 
     def load_config(self, config_path):
         """Load configuration settings"""
@@ -47,6 +53,10 @@ class VideoTranscriber:
             "visual_similarity_threshold": 0.3,
             "min_speaker_duration": 1.0,  # seconds
             "output_dir": "./output",
+            "device": "auto",  # auto, cpu, mps, cuda
+            "force_cpu": False,  # Force CPU even if GPU available
+            "whisper_backend": "faster-whisper",  # "openai-whisper" or "faster-whisper"
+            "compute_type": "auto",  # auto, int8, int8_float32, float16, float32
         }
 
         if config_path and os.path.exists(config_path):
@@ -153,9 +163,19 @@ class VideoTranscriber:
     def setup_models(self):
         """Initialize AI models"""
         self.logger.info("Loading AI models...")
+        
+        # Detect best available device
+        self.device = self.get_best_device()
+        self.logger.info(f"Using device: {self.device}")
 
-        # Load Whisper model
-        self.whisper_model = whisper.load_model(self.config["whisper_model"])
+        # Load Whisper model based on backend selection
+        backend = self.config.get("whisper_backend", "faster-whisper")
+        self.logger.info(f"Using Whisper backend: {backend}")
+        
+        if backend == "faster-whisper":
+            self.setup_faster_whisper()
+        else:
+            self.setup_openai_whisper()
 
         # Temporarily disable diarization
         self.logger.warning("Diarization temporarily disabled due to dependency issues")
@@ -164,6 +184,108 @@ class VideoTranscriber:
         # Temporarily disable CLIP visual analysis
         self.logger.warning("Visual analysis temporarily disabled due to dependency issues")
         self.config["enable_visual_analysis"] = False
+        
+        # Mark models as initialized
+        self.models_initialized = True
+
+    def setup_faster_whisper(self):
+        """Setup faster-whisper backend with Apple Silicon optimization"""
+        try:
+            # Determine compute type
+            compute_type = self.get_compute_type()
+            
+            # faster-whisper doesn't use MPS directly, but CTranslate2 is optimized for Apple Silicon
+            device = "cpu"  # faster-whisper uses CPU with optimized backends
+            
+            self.logger.info(f"Loading faster-whisper model: {self.config['whisper_model']} on {device} with {compute_type}")
+            
+            self.whisper_model = WhisperModel(
+                self.config["whisper_model"],
+                device=device,
+                compute_type=compute_type,
+                cpu_threads=0,  # Use all available threads
+            )
+            
+            self.actual_device = device
+            self.backend_type = "faster-whisper"
+            self.logger.info(f"faster-whisper model loaded successfully with {compute_type} precision")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to load faster-whisper: {e}")
+            self.logger.info("Falling back to OpenAI Whisper...")
+            self.setup_openai_whisper()
+
+    def setup_openai_whisper(self):
+        """Setup OpenAI Whisper backend with fallback mechanism"""
+        try:
+            self.whisper_model = whisper.load_model(
+                self.config["whisper_model"], 
+                device=self.device
+            )
+            self.logger.info(f"OpenAI Whisper model loaded successfully on {self.device}")
+            self.actual_device = self.device
+            self.backend_type = "openai-whisper"
+        except Exception as e:
+            if self.device == "mps":
+                self.logger.warning(f"MPS loading failed for Whisper ({str(e)[:100]}...), falling back to CPU")
+                self.whisper_model = whisper.load_model(
+                    self.config["whisper_model"], 
+                    device="cpu"
+                )
+                self.actual_device = "cpu"
+                self.backend_type = "openai-whisper"
+                self.logger.info("Note: CLIP models (when enabled) may still use MPS for better performance")
+            else:
+                raise e
+
+    def get_compute_type(self):
+        """Determine the best compute type for faster-whisper"""
+        compute_type = self.config.get("compute_type", "auto")
+        
+        if compute_type != "auto":
+            return compute_type
+        
+        # Auto-detect best compute type for Apple Silicon
+        import platform
+        if platform.machine() == "arm64":  # Apple Silicon
+            # int8 provides good speed/quality balance on Apple Silicon
+            return "int8"
+        else:
+            # x86 systems
+            return "int8"
+
+    def get_best_device(self):
+        """Determine the best available device for PyTorch operations"""
+        # Check if user forced CPU usage
+        if self.config.get("force_cpu", False):
+            self.logger.info("CPU forced via configuration")
+            return "cpu"
+        
+        # Check if user specified a device
+        device_config = self.config.get("device", "auto").lower()
+        if device_config != "auto":
+            if device_config == "mps" and torch.backends.mps.is_available():
+                self.logger.info("Using MPS (Metal Performance Shaders) as configured")
+                return "mps"
+            elif device_config == "cuda" and torch.cuda.is_available():
+                self.logger.info("Using CUDA as configured")
+                return "cuda"
+            elif device_config == "cpu":
+                self.logger.info("Using CPU as configured")
+                return "cpu"
+            else:
+                self.logger.warning(f"Configured device '{device_config}' not available, falling back to auto-detection")
+        
+        # Auto-detect best device
+        if torch.backends.mps.is_available() and torch.backends.mps.is_built():
+            self.logger.info("Apple Silicon MPS (Metal Performance Shaders) detected and selected")
+            return "mps"
+        elif torch.cuda.is_available():
+            self.logger.info("CUDA GPU detected and selected")
+            return "cuda"
+        else:
+            self.logger.info("Using CPU (no GPU acceleration available)")
+            return "cpu"
 
     def extract_audio(self, video_path, output_path):
         """Extract audio from video file"""
@@ -188,8 +310,53 @@ class VideoTranscriber:
         return output_path
 
     def transcribe_audio(self, audio_path):
-        """Transcribe audio using Whisper"""
-        self.logger.info("Transcribing audio...")
+        """Transcribe audio using Whisper (supports both backends)"""
+        self.logger.info(f"Transcribing audio using {self.backend_type}...")
+        
+        if self.backend_type == "faster-whisper":
+            return self.transcribe_with_faster_whisper(audio_path)
+        else:
+            return self.transcribe_with_openai_whisper(audio_path)
+
+    def transcribe_with_faster_whisper(self, audio_path):
+        """Transcribe audio using faster-whisper backend"""
+        segments, info = self.whisper_model.transcribe(
+            audio_path,
+            word_timestamps=True,
+            language=None,  # Auto-detect
+        )
+        
+        # Convert faster-whisper format to OpenAI Whisper format for compatibility
+        segments_list = []
+        for i, segment in enumerate(segments):
+            segment_dict = {
+                "id": i,
+                "start": segment.start,
+                "end": segment.end,
+                "text": segment.text,
+                "words": []
+            }
+            
+            # Add word-level timestamps if available
+            if hasattr(segment, 'words') and segment.words:
+                for word in segment.words:
+                    segment_dict["words"].append({
+                        "start": word.start,
+                        "end": word.end,
+                        "word": word.word,
+                        "probability": getattr(word, 'probability', 1.0)
+                    })
+            
+            segments_list.append(segment_dict)
+        
+        return {
+            "segments": segments_list,
+            "language": info.language,
+            "language_probability": info.language_probability,
+        }
+
+    def transcribe_with_openai_whisper(self, audio_path):
+        """Transcribe audio using OpenAI Whisper backend"""
         result = self.whisper_model.transcribe(
             audio_path,
             word_timestamps=True,
@@ -333,10 +500,15 @@ class VideoTranscriber:
             frame_rgb = cv2.cvtColor(frame["frame"], cv2.COLOR_BGR2RGB)
             image = Image.fromarray(frame_rgb)
 
-            # Process with CLIP
+            # Process with CLIP - move inputs to device
             inputs = self.clip_processor(
                 text=[text], images=image, return_tensors="pt", padding=True
             )
+            
+            # Move inputs to device if available
+            if hasattr(self, 'device') and self.device != "cpu":
+                inputs = {k: v.to(self.device) if hasattr(v, 'to') else v for k, v in inputs.items()}
+            
             outputs = self.clip_model(**inputs)
 
             # Calculate similarity
@@ -427,8 +599,10 @@ class VideoTranscriber:
                 markdown_content.append(f"### {speaker}")
                 current_speaker = speaker
 
-            # Add timestamp and text
-            markdown_content.append(f"**[{timestamp}]** {text}")
+            # Add timestamp on its own line, then text
+            markdown_content.append(f"**[{timestamp}]**")
+            markdown_content.append(f"{text}")
+            markdown_content.append("")
 
             # Add relevant screenshots
             relevant_matches = [
@@ -491,24 +665,115 @@ class VideoTranscriber:
         return html_file
 
     def export_to_pdf(self, processed_data, output_dir):
-        """Export processed data to PDF format"""
-        try:
-            import weasyprint
-        except ImportError:
-            self.logger.error("WeasyPrint not available for PDF export")
-            return None
-
-        self.logger.info("Exporting to PDF...")
-        
-        # First create HTML, then convert to PDF
-        html_file = self.export_to_html(processed_data, output_dir)
-        
-        video_name = processed_data["metadata"]["video_name"]
-        pdf_file = os.path.join(output_dir, f"{video_name}_transcript.pdf")
+        """Export processed data to PDF format using ReportLab"""
+        self.logger.info("Exporting to PDF using ReportLab...")
         
         try:
-            weasyprint.HTML(filename=html_file).write_pdf(pdf_file)
+            metadata = processed_data["metadata"]
+            transcript = processed_data["transcript"]
+            visual = processed_data["visual"]
+            
+            video_name = metadata["video_name"]
+            pdf_file = os.path.join(output_dir, f"{video_name}_transcript.pdf")
+            
+            # Create PDF document
+            doc = SimpleDocTemplate(pdf_file, pagesize=letter,
+                                  rightMargin=72, leftMargin=72,
+                                  topMargin=72, bottomMargin=18)
+            
+            # Get styles
+            styles = getSampleStyleSheet()
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=16,
+                spaceAfter=30,
+            )
+            heading_style = ParagraphStyle(
+                'CustomHeading',
+                parent=styles['Heading2'],
+                fontSize=14,
+                spaceAfter=12,
+            )
+            timestamp_style = ParagraphStyle(
+                'Timestamp',
+                parent=styles['Normal'],
+                fontSize=10,
+                textColor=gray,
+                fontName='Helvetica-Bold',
+                spaceAfter=6,
+            )
+            content_style = ParagraphStyle(
+                'Content',
+                parent=styles['Normal'],
+                fontSize=11,
+                spaceAfter=12,
+            )
+            
+            # Build story
+            story = []
+            
+            # Title
+            story.append(Paragraph(f"Transcript: {video_name}", title_style))
+            story.append(Paragraph(f"Generated: {metadata['generated_at'][:19].replace('T', ' ')}", styles['Normal']))
+            story.append(Paragraph(f"Duration: {metadata['duration_formatted']}", styles['Normal']))
+            story.append(Spacer(1, 20))
+            
+            # Summary
+            story.append(Paragraph("Summary", heading_style))
+            story.append(Paragraph("Auto-generated summary would go here", styles['Italic']))
+            story.append(Spacer(1, 20))
+            
+            # Speakers
+            speakers = transcript["speakers"]
+            if len(speakers) > 1:
+                story.append(Paragraph("Speakers", heading_style))
+                for speaker in speakers:
+                    story.append(Paragraph(f"• {speaker}", styles['Normal']))
+                story.append(Spacer(1, 20))
+            
+            # Transcript
+            story.append(Paragraph("Transcript", heading_style))
+            
+            current_speaker = None
+            for segment in transcript["segments"]:
+                timestamp = self.format_timestamp(segment["start"])
+                speaker = segment.get("speaker", "Unknown")
+                text = segment["text"].strip()
+                
+                # Add speaker change
+                if speaker != current_speaker:
+                    if current_speaker is not None:
+                        story.append(Spacer(1, 12))
+                    story.append(Paragraph(speaker, heading_style))  
+                    current_speaker = speaker
+                
+                # Add timestamp and text on separate lines
+                story.append(Paragraph(f"[{timestamp}]", timestamp_style))
+                story.append(Paragraph(text, content_style))
+                
+                # Add relevant screenshots
+                relevant_matches = [
+                    match for match in visual["matches"]
+                    if match["segment"]["start"] == segment["start"]
+                ]
+                
+                for match in relevant_matches:
+                    img_path = match["frame"]["filepath"]
+                    if os.path.exists(img_path):
+                        try:
+                            # Add image with caption
+                            story.append(RLImage(img_path, width=4*inch, height=3*inch))
+                            story.append(Paragraph(f"Screenshot at {timestamp}", styles['Normal']))
+                            story.append(Spacer(1, 12))
+                        except Exception as e:
+                            self.logger.warning(f"Could not add image to PDF: {e}")
+            
+            # Build PDF
+            doc.build(story)
+            self.logger.info(f"PDF exported successfully: {pdf_file}")
             return pdf_file
+            
         except Exception as e:
             self.logger.error(f"PDF generation failed: {e}")
             return None
@@ -544,6 +809,10 @@ class VideoTranscriber:
 
     def process_video(self, video_path, output_dir=None):
         """Main processing pipeline"""
+        # Initialize models if not already done (allows for config overrides)
+        if not self.models_initialized:
+            self.setup_models()
+            
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found: {video_path}")
 
@@ -662,6 +931,10 @@ def main():
     process_parser.add_argument(
         "--interval", type=int, default=30, help="Screenshot interval in seconds"
     )
+    process_parser.add_argument(
+        "--backend", choices=["openai-whisper", "faster-whisper"], 
+        help="Whisper backend to use (overrides config)"
+    )
     
     # Export command (for re-exporting from stored data)
     export_parser = subparsers.add_parser("export", help="Export from previously processed data")
@@ -700,6 +973,8 @@ def main():
             transcriber.config["output_format"] = args.format
             if hasattr(args, 'interval'):
                 transcriber.config["screenshot_interval"] = args.interval
+            if hasattr(args, 'backend') and args.backend:
+                transcriber.config["whisper_backend"] = args.backend
             
             results = transcriber.process_video(args.video, args.output)
             print("\n✅ Processing complete!")
