@@ -130,11 +130,11 @@ python main.py process video.mp4 --backend openai-whisper
 **2. Improved Timestamp Formatting**
 - **Problem**: Timestamps were inline with text, making transcripts hard to read
 - **Solution**: Put timestamps on separate lines in all formats
-- **Before**: `**[00:00:06]** First of all, we'll talk about band, volume...`
+- **Before**: `**[00:00:06]** First of all, we'll talk about...`
 - **After**: 
   ```
   **[00:00:06]**
-  First of all, we'll talk about band, volume...
+  First of all, we'll talk about...
   ```
 
 ### Performance Results
