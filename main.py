@@ -13,24 +13,25 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import cv2
-import librosa
 import markdown
 import numpy as np
-import soundfile as sf
 import torch
 import whisper
 from faster_whisper import WhisperModel
 from PIL import Image
+from reportlab.lib.colors import gray
+
 # import weasyprint  # Temporarily disabled due to system lib issues
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.lib.colors import gray
+from reportlab.platypus import Image as RLImage
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+
 # from pyannote.audio import Pipeline  # Temporarily disabled
 # from transformers import CLIPModel, CLIPProcessor  # Temporarily disabled
 
@@ -78,38 +79,54 @@ class VideoTranscriber:
         )
         self.logger = logging.getLogger(__name__)
 
-    def save_processed_data(self, video_path, transcript_segments, frames, visual_matches, output_dir):
+    def save_processed_data(
+        self, video_path, transcript_segments, frames, visual_matches, output_dir
+    ):
         """Save all processed data to JSON format for later export"""
         video_name = Path(video_path).stem
         json_file = os.path.join(output_dir, f"{video_name}_processed.json")
-        
+
         # Create the comprehensive data structure
+        # Compute duration safely as the max end among segments
+        duration_seconds = (
+            max((seg.get("end") or 0) for seg in transcript_segments)
+            if transcript_segments
+            else 0
+        )
         processed_data = {
             "metadata": {
                 "video_name": video_name,
                 "video_path": str(video_path),
                 "generated_at": datetime.now().isoformat(),
-                "duration": transcript_segments[-1]["end"] if transcript_segments else 0,
-                "duration_formatted": self.format_timestamp(transcript_segments[-1]["end"]) if transcript_segments else "00:00:00",
+                "duration": duration_seconds,
+                "duration_formatted": self.format_timestamp(duration_seconds),
                 "processing_config": {
                     "whisper_model": self.config["whisper_model"],
                     "screenshot_interval": self.config["screenshot_interval"],
                     "diarization_enabled": self.config["enable_diarization"],
-                    "visual_analysis_enabled": self.config["enable_visual_analysis"]
-                }
+                    "visual_analysis_enabled": self.config["enable_visual_analysis"],
+                },
             },
             "transcript": {
                 "segments": transcript_segments,
-                "speakers": sorted(list(set(seg.get("speaker", "Unknown") for seg in transcript_segments)))
+                "speakers": sorted(
+                    list(
+                        set(
+                            seg.get("speaker", "Unknown") for seg in transcript_segments
+                        )
+                    )
+                ),
             },
             "visual": {
                 "frames": [
                     {
                         "index": frame["index"],
                         "timestamp": frame["timestamp"],
-                        "timestamp_formatted": self.format_timestamp(frame["timestamp"]),
+                        "timestamp_formatted": self.format_timestamp(
+                            frame["timestamp"]
+                        ),
                         "filepath": frame["filepath"],
-                        "relative_path": os.path.relpath(frame["filepath"], output_dir)
+                        "relative_path": os.path.relpath(frame["filepath"], output_dir),
                     }
                     for frame in frames
                 ],
@@ -119,38 +136,40 @@ class VideoTranscriber:
                         "frame": {
                             "index": match["frame"]["index"],
                             "timestamp": match["frame"]["timestamp"],
-                            "timestamp_formatted": self.format_timestamp(match["frame"]["timestamp"]),
+                            "timestamp_formatted": self.format_timestamp(
+                                match["frame"]["timestamp"]
+                            ),
                             "filepath": match["frame"]["filepath"],
-                            "relative_path": os.path.relpath(match["frame"]["filepath"], output_dir)
+                            "relative_path": os.path.relpath(
+                                match["frame"]["filepath"], output_dir
+                            ),
                         },
-                        "relevance_score": match["relevance_score"]
+                        "relevance_score": match["relevance_score"],
                     }
                     for match in visual_matches
-                ]
-            }
+                ],
+            },
         }
-        
+
         # Save to JSON
-        with open(json_file, 'w', encoding='utf-8') as f:
+        with open(json_file, "w", encoding="utf-8") as f:
             json.dump(processed_data, f, indent=2, ensure_ascii=False)
-        
+
         self.logger.info(f"Processed data saved to {json_file}")
         return json_file
 
     def load_processed_data(self, json_file):
         """Load processed data from JSON file"""
-        with open(json_file, 'r', encoding='utf-8') as f:
+        with open(json_file, "r", encoding="utf-8") as f:
             return json.load(f)
 
     def export_from_json(self, json_file, output_format, output_dir=None):
         """Export processed data to specified format"""
         processed_data = self.load_processed_data(json_file)
-        
+
         if output_dir is None:
             output_dir = os.path.dirname(json_file)
-        
-        video_name = processed_data["metadata"]["video_name"]
-        
+
         if output_format == "markdown":
             return self.export_to_markdown(processed_data, output_dir)
         elif output_format == "html":
@@ -163,7 +182,7 @@ class VideoTranscriber:
     def setup_models(self):
         """Initialize AI models"""
         self.logger.info("Loading AI models...")
-        
+
         # Detect best available device
         self.device = self.get_best_device()
         self.logger.info(f"Using device: {self.device}")
@@ -171,7 +190,7 @@ class VideoTranscriber:
         # Load Whisper model based on backend selection
         backend = self.config.get("whisper_backend", "faster-whisper")
         self.logger.info(f"Using Whisper backend: {backend}")
-        
+
         if backend == "faster-whisper":
             self.setup_faster_whisper()
         else:
@@ -182,9 +201,11 @@ class VideoTranscriber:
         self.config["enable_diarization"] = False
 
         # Temporarily disable CLIP visual analysis
-        self.logger.warning("Visual analysis temporarily disabled due to dependency issues")
+        self.logger.warning(
+            "Visual analysis temporarily disabled due to dependency issues"
+        )
         self.config["enable_visual_analysis"] = False
-        
+
         # Mark models as initialized
         self.models_initialized = True
 
@@ -193,23 +214,29 @@ class VideoTranscriber:
         try:
             # Determine compute type
             compute_type = self.get_compute_type()
-            
+
             # faster-whisper doesn't use MPS directly, but CTranslate2 is optimized for Apple Silicon
-            device = "cpu"  # faster-whisper uses CPU with optimized backends
-            
-            self.logger.info(f"Loading faster-whisper model: {self.config['whisper_model']} on {device} with {compute_type}")
-            
+            # Prefer CUDA if available; otherwise CPU
+            device = "cuda" if getattr(self, "device", "cpu") == "cuda" else "cpu"
+            cpu_threads = max(1, (os.cpu_count() or 1))
+
+            self.logger.info(
+                f"Loading faster-whisper model: {self.config['whisper_model']} on {device} with {compute_type}"
+            )
+
             self.whisper_model = WhisperModel(
                 self.config["whisper_model"],
                 device=device,
                 compute_type=compute_type,
-                cpu_threads=0,  # Use all available threads
+                cpu_threads=cpu_threads,
             )
-            
+
             self.actual_device = device
             self.backend_type = "faster-whisper"
-            self.logger.info(f"faster-whisper model loaded successfully with {compute_type} precision")
-            
+            self.logger.info(
+                f"faster-whisper model loaded successfully with {compute_type} precision"
+            )
+
         except Exception as e:
             self.logger.error(f"Failed to load faster-whisper: {e}")
             self.logger.info("Falling back to OpenAI Whisper...")
@@ -219,34 +246,39 @@ class VideoTranscriber:
         """Setup OpenAI Whisper backend with fallback mechanism"""
         try:
             self.whisper_model = whisper.load_model(
-                self.config["whisper_model"], 
-                device=self.device
+                self.config["whisper_model"], device=self.device
             )
-            self.logger.info(f"OpenAI Whisper model loaded successfully on {self.device}")
+            self.logger.info(
+                f"OpenAI Whisper model loaded successfully on {self.device}"
+            )
             self.actual_device = self.device
             self.backend_type = "openai-whisper"
         except Exception as e:
             if self.device == "mps":
-                self.logger.warning(f"MPS loading failed for Whisper ({str(e)[:100]}...), falling back to CPU")
+                self.logger.warning(
+                    f"MPS loading failed for Whisper ({str(e)[:100]}...), falling back to CPU"
+                )
                 self.whisper_model = whisper.load_model(
-                    self.config["whisper_model"], 
-                    device="cpu"
+                    self.config["whisper_model"], device="cpu"
                 )
                 self.actual_device = "cpu"
                 self.backend_type = "openai-whisper"
-                self.logger.info("Note: CLIP models (when enabled) may still use MPS for better performance")
+                self.logger.info(
+                    "Note: CLIP models (when enabled) may still use MPS for better performance"
+                )
             else:
                 raise e
 
     def get_compute_type(self):
         """Determine the best compute type for faster-whisper"""
         compute_type = self.config.get("compute_type", "auto")
-        
+
         if compute_type != "auto":
             return compute_type
-        
+
         # Auto-detect best compute type for Apple Silicon
         import platform
+
         if platform.machine() == "arm64":  # Apple Silicon
             # int8 provides good speed/quality balance on Apple Silicon
             return "int8"
@@ -260,11 +292,15 @@ class VideoTranscriber:
         if self.config.get("force_cpu", False):
             self.logger.info("CPU forced via configuration")
             return "cpu"
-        
+
         # Check if user specified a device
         device_config = self.config.get("device", "auto").lower()
         if device_config != "auto":
-            if device_config == "mps" and torch.backends.mps.is_available():
+            if (
+                device_config == "mps"
+                and getattr(torch.backends, "mps", None)
+                and torch.backends.mps.is_available()
+            ):
                 self.logger.info("Using MPS (Metal Performance Shaders) as configured")
                 return "mps"
             elif device_config == "cuda" and torch.cuda.is_available():
@@ -274,11 +310,19 @@ class VideoTranscriber:
                 self.logger.info("Using CPU as configured")
                 return "cpu"
             else:
-                self.logger.warning(f"Configured device '{device_config}' not available, falling back to auto-detection")
-        
+                self.logger.warning(
+                    f"Configured device '{device_config}' not available, falling back to auto-detection"
+                )
+
         # Auto-detect best device
-        if torch.backends.mps.is_available() and torch.backends.mps.is_built():
-            self.logger.info("Apple Silicon MPS (Metal Performance Shaders) detected and selected")
+        if (
+            getattr(torch.backends, "mps", None)
+            and torch.backends.mps.is_available()
+            and torch.backends.mps.is_built()
+        ):
+            self.logger.info(
+                "Apple Silicon MPS (Metal Performance Shaders) detected and selected"
+            )
             return "mps"
         elif torch.cuda.is_available():
             self.logger.info("CUDA GPU detected and selected")
@@ -312,7 +356,7 @@ class VideoTranscriber:
     def transcribe_audio(self, audio_path):
         """Transcribe audio using Whisper (supports both backends)"""
         self.logger.info(f"Transcribing audio using {self.backend_type}...")
-        
+
         if self.backend_type == "faster-whisper":
             return self.transcribe_with_faster_whisper(audio_path)
         else:
@@ -325,7 +369,7 @@ class VideoTranscriber:
             word_timestamps=True,
             language=None,  # Auto-detect
         )
-        
+
         # Convert faster-whisper format to OpenAI Whisper format for compatibility
         segments_list = []
         for i, segment in enumerate(segments):
@@ -334,21 +378,23 @@ class VideoTranscriber:
                 "start": segment.start,
                 "end": segment.end,
                 "text": segment.text,
-                "words": []
+                "words": [],
             }
-            
+
             # Add word-level timestamps if available
-            if hasattr(segment, 'words') and segment.words:
+            if hasattr(segment, "words") and segment.words:
                 for word in segment.words:
-                    segment_dict["words"].append({
-                        "start": word.start,
-                        "end": word.end,
-                        "word": word.word,
-                        "probability": getattr(word, 'probability', 1.0)
-                    })
-            
+                    segment_dict["words"].append(
+                        {
+                            "start": word.start,
+                            "end": word.end,
+                            "word": word.word,
+                            "probability": getattr(word, "probability", 1.0),
+                        }
+                    )
+
             segments_list.append(segment_dict)
-        
+
         return {
             "segments": segments_list,
             "language": info.language,
@@ -372,10 +418,10 @@ class VideoTranscriber:
         self.logger.info("Performing speaker diarization...")
         try:
             # Check if diarization pipeline is available
-            if not hasattr(self, 'diarization_pipeline'):
+            if not hasattr(self, "diarization_pipeline"):
                 self.logger.warning("Diarization pipeline not available")
                 return None
-                
+
             diarization = self.diarization_pipeline(audio_path)
 
             # Convert to list of segments
@@ -405,12 +451,19 @@ class VideoTranscriber:
         os.makedirs(frames_dir, exist_ok=True)
 
         cap = cv2.VideoCapture(video_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
+        if not cap.isOpened():
+            raise RuntimeError(f"Could not open video: {video_path}")
+
+        fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
         frames = []
 
         for i, timestamp in enumerate(timestamps):
-            frame_number = int(timestamp * fps)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+            # Seek by frame number if FPS is known, otherwise fallback to time-based seek
+            if fps > 1e-6:
+                frame_number = int(float(timestamp) * fps)
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+            else:
+                cap.set(cv2.CAP_PROP_POS_MSEC, float(timestamp) * 1000.0)
             ret, frame = cap.read()
 
             if ret:
@@ -427,7 +480,7 @@ class VideoTranscriber:
                 frames.append(
                     {
                         "index": i,
-                        "timestamp": timestamp,
+                        "timestamp": float(timestamp),
                         "filename": filename,
                         "filepath": filepath,
                         "frame": frame,
@@ -442,6 +495,8 @@ class VideoTranscriber:
         # Even if CLIP visual analysis is disabled, we can still do keyword-based matching
         self.logger.info("Analyzing visual content (keyword-based matching)...")
         visual_matches = []
+        if not frames:
+            return visual_matches
 
         # Extract text snippets that might reference visual content
         visual_keywords = [
@@ -466,9 +521,12 @@ class VideoTranscriber:
             if any(keyword in text for keyword in visual_keywords):
                 # Find closest frame
                 segment_time = segment["start"]
-                closest_frame = min(
-                    frames, key=lambda x: abs(x["timestamp"] - segment_time)
-                )
+                try:
+                    closest_frame = min(
+                        frames, key=lambda x: abs(x["timestamp"] - segment_time)
+                    )
+                except ValueError:
+                    continue
 
                 if (
                     abs(closest_frame["timestamp"] - segment_time) <= 10
@@ -489,13 +547,15 @@ class VideoTranscriber:
         """Calculate relevance between text and visual content using CLIP"""
         try:
             # Check if CLIP models are available
-            if not hasattr(self, 'clip_processor') or not hasattr(self, 'clip_model'):
+            if not hasattr(self, "clip_processor") or not hasattr(self, "clip_model"):
                 # Only log once by checking if we've already logged this warning
-                if not hasattr(self, '_clip_warning_logged'):
-                    self.logger.warning("CLIP models not available - using keyword-based relevance fallback")
+                if not hasattr(self, "_clip_warning_logged"):
+                    self.logger.warning(
+                        "CLIP models not available - using keyword-based relevance fallback"
+                    )
                     self._clip_warning_logged = True
                 return 0.5
-                
+
             # Convert frame to PIL Image
             frame_rgb = cv2.cvtColor(frame["frame"], cv2.COLOR_BGR2RGB)
             image = Image.fromarray(frame_rgb)
@@ -504,11 +564,14 @@ class VideoTranscriber:
             inputs = self.clip_processor(
                 text=[text], images=image, return_tensors="pt", padding=True
             )
-            
+
             # Move inputs to device if available
-            if hasattr(self, 'device') and self.device != "cpu":
-                inputs = {k: v.to(self.device) if hasattr(v, 'to') else v for k, v in inputs.items()}
-            
+            if hasattr(self, "device") and self.device != "cpu":
+                inputs = {
+                    k: v.to(self.device) if hasattr(v, "to") else v
+                    for k, v in inputs.items()
+                }
+
             outputs = self.clip_model(**inputs)
 
             # Calculate similarity
@@ -554,17 +617,19 @@ class VideoTranscriber:
     def export_to_markdown(self, processed_data, output_dir):
         """Export processed data to markdown format"""
         self.logger.info("Exporting to markdown...")
-        
+
         metadata = processed_data["metadata"]
         transcript = processed_data["transcript"]
         visual = processed_data["visual"]
-        
+
         video_name = metadata["video_name"]
         markdown_content = []
 
         # Header
         markdown_content.append(f"# Transcript: {video_name}")
-        markdown_content.append(f"**Generated:** {metadata['generated_at'][:19].replace('T', ' ')}")
+        markdown_content.append(
+            f"**Generated:** {metadata['generated_at'][:19].replace('T', ' ')}"
+        )
         markdown_content.append(f"**Duration:** {metadata['duration_formatted']}")
         markdown_content.append("")
 
@@ -606,7 +671,8 @@ class VideoTranscriber:
 
             # Add relevant screenshots
             relevant_matches = [
-                match for match in visual["matches"]
+                match
+                for match in visual["matches"]
                 if match["segment"]["start"] == segment["start"]
             ]
 
@@ -625,10 +691,10 @@ class VideoTranscriber:
     def export_to_html(self, processed_data, output_dir):
         """Export processed data to HTML format"""
         self.logger.info("Exporting to HTML...")
-        
+
         # First create markdown, then convert to HTML
         markdown_file = self.export_to_markdown(processed_data, output_dir)
-        
+
         with open(markdown_file, "r", encoding="utf-8") as f:
             md_content = f.read()
 
@@ -667,152 +733,181 @@ class VideoTranscriber:
     def export_to_pdf(self, processed_data, output_dir):
         """Export processed data to PDF format using ReportLab"""
         self.logger.info("Exporting to PDF using ReportLab...")
-        
+
         try:
             metadata = processed_data["metadata"]
             transcript = processed_data["transcript"]
             visual = processed_data["visual"]
-            
+
             video_name = metadata["video_name"]
             pdf_file = os.path.join(output_dir, f"{video_name}_transcript.pdf")
-            
+
             # Create PDF document
-            doc = SimpleDocTemplate(pdf_file, pagesize=letter,
-                                  rightMargin=72, leftMargin=72,
-                                  topMargin=72, bottomMargin=18)
-            
+            doc = SimpleDocTemplate(
+                pdf_file,
+                pagesize=letter,
+                rightMargin=72,
+                leftMargin=72,
+                topMargin=72,
+                bottomMargin=18,
+            )
+
             # Get styles
             styles = getSampleStyleSheet()
             title_style = ParagraphStyle(
-                'CustomTitle',
-                parent=styles['Heading1'],
+                "CustomTitle",
+                parent=styles["Heading1"],
                 fontSize=16,
                 spaceAfter=30,
             )
             heading_style = ParagraphStyle(
-                'CustomHeading',
-                parent=styles['Heading2'],
+                "CustomHeading",
+                parent=styles["Heading2"],
                 fontSize=14,
                 spaceAfter=12,
             )
             timestamp_style = ParagraphStyle(
-                'Timestamp',
-                parent=styles['Normal'],
+                "Timestamp",
+                parent=styles["Normal"],
                 fontSize=10,
                 textColor=gray,
-                fontName='Helvetica-Bold',
+                fontName="Helvetica-Bold",
                 spaceAfter=6,
             )
             content_style = ParagraphStyle(
-                'Content',
-                parent=styles['Normal'],
+                "Content",
+                parent=styles["Normal"],
                 fontSize=11,
                 spaceAfter=12,
             )
-            
+
             # Build story
             story = []
-            
+
             # Title
             story.append(Paragraph(f"Transcript: {video_name}", title_style))
-            story.append(Paragraph(f"Generated: {metadata['generated_at'][:19].replace('T', ' ')}", styles['Normal']))
-            story.append(Paragraph(f"Duration: {metadata['duration_formatted']}", styles['Normal']))
+            story.append(
+                Paragraph(
+                    f"Generated: {metadata['generated_at'][:19].replace('T', ' ')}",
+                    styles["Normal"],
+                )
+            )
+            story.append(
+                Paragraph(
+                    f"Duration: {metadata['duration_formatted']}", styles["Normal"]
+                )
+            )
             story.append(Spacer(1, 20))
-            
+
             # Summary
             story.append(Paragraph("Summary", heading_style))
-            story.append(Paragraph("Auto-generated summary would go here", styles['Italic']))
+            story.append(
+                Paragraph("Auto-generated summary would go here", styles["Italic"])
+            )
             story.append(Spacer(1, 20))
-            
+
             # Speakers
             speakers = transcript["speakers"]
             if len(speakers) > 1:
                 story.append(Paragraph("Speakers", heading_style))
                 for speaker in speakers:
-                    story.append(Paragraph(f"• {speaker}", styles['Normal']))
+                    story.append(Paragraph(f"• {speaker}", styles["Normal"]))
                 story.append(Spacer(1, 20))
-            
+
             # Transcript
             story.append(Paragraph("Transcript", heading_style))
-            
+
             current_speaker = None
             for segment in transcript["segments"]:
                 timestamp = self.format_timestamp(segment["start"])
                 speaker = segment.get("speaker", "Unknown")
                 text = segment["text"].strip()
-                
+
                 # Add speaker change
                 if speaker != current_speaker:
                     if current_speaker is not None:
                         story.append(Spacer(1, 12))
-                    story.append(Paragraph(speaker, heading_style))  
+                    story.append(Paragraph(speaker, heading_style))
                     current_speaker = speaker
-                
+
                 # Add timestamp and text on separate lines
                 story.append(Paragraph(f"[{timestamp}]", timestamp_style))
                 story.append(Paragraph(text, content_style))
-                
+
                 # Add relevant screenshots
                 relevant_matches = [
-                    match for match in visual["matches"]
+                    match
+                    for match in visual["matches"]
                     if match["segment"]["start"] == segment["start"]
                 ]
-                
+
                 for match in relevant_matches:
                     img_path = match["frame"]["filepath"]
                     if os.path.exists(img_path):
                         try:
                             # Add image with caption
-                            story.append(RLImage(img_path, width=4*inch, height=3*inch))
-                            story.append(Paragraph(f"Screenshot at {timestamp}", styles['Normal']))
+                            story.append(
+                                RLImage(img_path, width=4 * inch, height=3 * inch)
+                            )
+                            story.append(
+                                Paragraph(
+                                    f"Screenshot at {timestamp}", styles["Normal"]
+                                )
+                            )
                             story.append(Spacer(1, 12))
                         except Exception as e:
                             self.logger.warning(f"Could not add image to PDF: {e}")
-            
+
             # Build PDF
             doc.build(story)
             self.logger.info(f"PDF exported successfully: {pdf_file}")
             return pdf_file
-            
+
         except Exception as e:
             self.logger.error(f"PDF generation failed: {e}")
             return None
 
-
-
     def embed_images_in_html(self, html_content, base_path):
-        """Embed images as base64 in HTML"""
+        """Embed images as base64 in HTML (robust to attribute order)"""
         import base64
         import re
 
-        def replace_img(match):
-            img_path = match.group(1)
+        def replace_img_tag(match):
+            tag = match.group(0)
+            src_m = re.search(r'src="([^"]+)"', tag, flags=re.IGNORECASE)
+            if not src_m:
+                return tag
+            alt_m = re.search(r'alt="([^"]*)"', tag, flags=re.IGNORECASE)
+            img_path = src_m.group(1)
+            alt_text = alt_m.group(1) if alt_m else ""
             full_path = os.path.join(base_path, img_path)
-
             if os.path.exists(full_path):
                 with open(full_path, "rb") as f:
                     img_data = base64.b64encode(f.read()).decode()
-                    return f'<img src="data:image/jpeg;base64,{img_data}" alt="{match.group(2)}">'
-            return match.group(0)
+                return f'<img src="data:image/jpeg;base64,{img_data}" alt="{alt_text}">'
+            return tag
 
         return re.sub(
-            r'<img src="([^"]+)" alt="([^"]*)"[^>]*>', replace_img, html_content
+            r"<img\s+[^>]*>", replace_img_tag, html_content, flags=re.IGNORECASE
         )
 
-
     def format_timestamp(self, seconds):
-        """Format timestamp as HH:MM:SS"""
-        td = timedelta(seconds=seconds)
-        hours, remainder = divmod(td.seconds, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        """Format timestamp as HH:MM:SS (handles 24h+ and float seconds)"""
+        try:
+            total = int(round(float(seconds)))
+        except Exception:
+            return "00:00:00"
+        hours = total // 3600
+        minutes = (total % 3600) // 60
+        secs = total % 60
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
     def process_video(self, video_path, output_dir=None):
         """Main processing pipeline"""
         # Initialize models if not already done (allows for config overrides)
         if not self.models_initialized:
             self.setup_models()
-            
+
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found: {video_path}")
 
@@ -829,20 +924,22 @@ class VideoTranscriber:
             json_file = os.path.join(output_dir, f"{video_name}_processed.json")
             if os.path.exists(json_file):
                 self.logger.info(f"Found existing processed data: {json_file}")
-                self.logger.info("Using existing data. Delete the JSON file to reprocess from scratch.")
-                
+                self.logger.info(
+                    "Using existing data. Delete the JSON file to reprocess from scratch."
+                )
+
                 # Export to requested format using existing data
                 output_file = self.export_from_json(
                     json_file, self.config["output_format"], output_dir
                 )
-                
+
                 results = {
                     "processed_data": json_file,
-                    self.config["output_format"]: output_file
+                    self.config["output_format"]: output_file,
                 }
-                
+
                 return results
-            
+
             # Extract audio
             audio_path = os.path.join(temp_dir, f"{video_name}.wav")
             self.extract_audio(video_path, audio_path)
@@ -862,12 +959,14 @@ class VideoTranscriber:
             frame_timestamps = []
 
             # Regular interval screenshots
-            if transcript["segments"]:
-                segments = transcript["segments"]
-                if isinstance(segments, list) and len(segments) > 0:
-                    last_segment = segments[-1]
-                    duration = last_segment.get("end", 0)
-                else:
+            if transcript.get("segments"):
+                try:
+                    duration = (
+                        max((seg.get("end") or 0) for seg in transcript["segments"])
+                        if isinstance(transcript["segments"], list)
+                        else 0
+                    )
+                except Exception:
                     duration = 0
             else:
                 duration = 0
@@ -892,7 +991,7 @@ class VideoTranscriber:
 
             results = {
                 "processed_data": json_file,
-                self.config["output_format"]: output_file
+                self.config["output_format"]: output_file,
             }
 
             self.logger.info(f"Processing complete! Output files: {results}")
@@ -907,14 +1006,16 @@ def main():
     parser = argparse.ArgumentParser(
         description="Video Transcription Tool with AI and Diarization"
     )
-    
+
     # Create subparsers for different commands
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
-    
+
     # Process command (default behavior)
     process_parser = subparsers.add_parser("process", help="Process a video file")
     process_parser.add_argument("video", help="Path to video file")
-    process_parser.add_argument("-o", "--output", help="Output directory", default="./output")
+    process_parser.add_argument(
+        "-o", "--output", help="Output directory", default="./output"
+    )
     process_parser.add_argument("-c", "--config", help="Configuration file path")
     process_parser.add_argument(
         "--format",
@@ -932,12 +1033,15 @@ def main():
         "--interval", type=int, default=30, help="Screenshot interval in seconds"
     )
     process_parser.add_argument(
-        "--backend", choices=["openai-whisper", "faster-whisper"], 
-        help="Whisper backend to use (overrides config)"
+        "--backend",
+        choices=["openai-whisper", "faster-whisper"],
+        help="Whisper backend to use (overrides config)",
     )
-    
+
     # Export command (for re-exporting from stored data)
-    export_parser = subparsers.add_parser("export", help="Export from previously processed data")
+    export_parser = subparsers.add_parser(
+        "export", help="Export from previously processed data"
+    )
     export_parser.add_argument("json_file", help="Path to processed JSON file")
     export_parser.add_argument(
         "--format",
@@ -945,55 +1049,61 @@ def main():
         required=True,
         help="Export format",
     )
-    export_parser.add_argument("-o", "--output", help="Output directory (defaults to JSON file directory)")
+    export_parser.add_argument(
+        "-o", "--output", help="Output directory (defaults to JSON file directory)"
+    )
     export_parser.add_argument("-c", "--config", help="Configuration file path")
-    
+
     # Legacy support: if first argument looks like a video file, use process command
-    if len(sys.argv) > 1 and not sys.argv[1].startswith('-') and sys.argv[1] not in ['process', 'export']:
+    if (
+        len(sys.argv) > 1
+        and not sys.argv[1].startswith("-")
+        and sys.argv[1] not in ["process", "export"]
+    ):
         # Insert 'process' command for backward compatibility
-        sys.argv.insert(1, 'process')
-    
+        sys.argv.insert(1, "process")
+
     args = parser.parse_args()
-    
+
     # If no command specified, show help
     if not args.command:
         parser.print_help()
         sys.exit(1)
-    
+
     # Create transcriber
     transcriber = VideoTranscriber(args.config)
-    
+
     try:
         if args.command == "process":
             # Override config with command line arguments
-            if hasattr(args, 'no_diarization') and args.no_diarization:
+            if hasattr(args, "no_diarization") and args.no_diarization:
                 transcriber.config["enable_diarization"] = False
-            if hasattr(args, 'no_visual') and args.no_visual:
+            if hasattr(args, "no_visual") and args.no_visual:
                 transcriber.config["enable_visual_analysis"] = False
             transcriber.config["output_format"] = args.format
-            if hasattr(args, 'interval'):
+            if hasattr(args, "interval"):
                 transcriber.config["screenshot_interval"] = args.interval
-            if hasattr(args, 'backend') and args.backend:
+            if hasattr(args, "backend") and args.backend:
                 transcriber.config["whisper_backend"] = args.backend
-            
+
             results = transcriber.process_video(args.video, args.output)
             print("\n✅ Processing complete!")
             print(f"📁 Output directory: {args.output}")
             for format_type, file_path in results.items():
                 print(f"📄 {format_type.upper()}: {file_path}")
-                
+
         elif args.command == "export":
             if not os.path.exists(args.json_file):
                 print(f"❌ Error: JSON file not found: {args.json_file}")
                 sys.exit(1)
-                
+
             output_file = transcriber.export_from_json(
                 args.json_file, args.format, args.output
             )
-            
+
             print("\n✅ Export complete!")
             print(f"📄 {args.format.upper()}: {output_file}")
-            
+
     except Exception as e:
         print(f"❌ Error: {e}")
         sys.exit(1)
