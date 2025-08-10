@@ -1,218 +1,155 @@
-# Video Transcription Tool with AI and Diarization
+# CLAUDE.md
 
-A comprehensive macOS application for transcribing videos with locally hosted AI models, featuring speaker identification, intelligent screenshot capture, and multiple export formats.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
+## Project Architecture
 
-This tool processes video files to create rich, structured transcripts that combine speech-to-text, speaker identification, and contextual visual information. It's designed for professionals who need accurate, searchable records of video content with visual context preserved.
+This is a comprehensive video transcription tool that processes videos through an AI pipeline to create rich, structured transcripts with speaker identification and visual context.
 
-### Key Capabilities
-
-- **Local AI Processing**: Uses OpenAI's Whisper for transcription and pyannote-audio for speaker diarization, ensuring privacy and offline capability
-- **Intelligent Visual Capture**: Automatically screenshots video frames when speakers reference visual content or at configurable intervals
-- **Speaker Identification**: Distinguishes between different speakers and labels their contributions throughout the transcript
-- **Multiple Export Formats**: Outputs clean Markdown, self-contained HTML, or PDF formats optimized for different use cases
-- **LLM-Optimized Output**: Structured format specifically designed for consumption by language models
-
-## Technical Architecture
-
-### Core Components
-
-1. **Media Processing Pipeline**
-   - FFmpeg for video/audio extraction and processing
-   - OpenCV for frame extraction and manipulation
-   - Librosa for advanced audio analysis
-
-2. **AI Models**
-   - Whisper (tiny/base/small/medium/large) for speech recognition
-   - pyannote-audio for speaker diarization
-   - CLIP for visual-text relevance scoring
-
-3. **Export Engine**
-   - Markdown generation with embedded media references
-   - HTML export with base64-encoded images
-   - PDF generation via WeasyPrint
-
-### Processing Flow
-
+### Core Processing Pipeline
 ```
-Video Input → Audio Extraction → Transcription → Speaker Diarization
-     ↓              ↓                ↓              ↓
+Video Input → Audio Extraction → Whisper Transcription → Speaker Diarization
+     ↓              ↓                    ↓                    ↓
 Frame Extraction → Visual Analysis → Context Matching → Export Generation
 ```
 
-## Use Cases
+### Key Components
 
-### Professional Applications
-- **Meeting Documentation**: Transcribe team meetings with speaker identification and visual aids
-- **Educational Content**: Process lecture recordings with slide captures and speaker notes
-- **Interview Analysis**: Create searchable transcripts of interviews with contextual screenshots
-- **Training Materials**: Convert video training content into structured documentation
+**main.py** - Single-file application containing the complete `VideoTranscriber` class with:
+- Audio extraction using FFmpeg
+- Multiple Whisper backends (faster-whisper for Apple Silicon optimization, openai-whisper fallback)
+- Speaker diarization (temporarily disabled due to dependency issues)
+- Visual analysis and frame extraction 
+- Export engines for Markdown, HTML, and PDF
 
-### Content Creation
-- **Podcast Production**: Generate show notes with timestamps and visual elements
-- **Video Editing**: Create detailed scripts with visual cues for post-production
-- **Research Documentation**: Process research interviews or focus groups with speaker attribution
+**Processing Data Flow:**
+1. Extract audio from video (16kHz mono WAV)
+2. Transcribe using Whisper (supports word-level timestamps)
+3. Perform speaker diarization (pyannote-audio)
+4. Extract video frames at configurable intervals
+5. Match visual content with transcript segments using keyword detection
+6. Save all data to structured JSON for reusable exports
+7. Export to requested format(s)
 
-## Installation Requirements
+## Development Commands
 
-### System Dependencies
+### Setup and Installation
+```bash
+# Install system dependencies and Python packages
+./install.sh
+
+# Alternative setup using mise (if present)
+mise install
+mise run install
+```
+
+### Running the Application
+```bash
+# Quick command (fastest - uses uv or mise)
+./transcribe process video.mp4
+
+# Enhanced wrapper (with environment detection)
+./run.sh process video.mp4
+
+# Direct python (manual venv activation required)
+python main.py process video.mp4
+
+# With custom settings
+./transcribe process video.mp4 --format html --interval 20 --output ./results
+
+# Re-export from processed data (fast)
+./transcribe export output/video_processed.json --format pdf
+```
+
+### Key CLI Commands
+- `process` - Full video processing pipeline
+- `export` - Re-export from stored JSON data without reprocessing
+- `--backend faster-whisper` - Use optimized Apple Silicon backend
+- `--no-diarization` - Disable speaker identification
+- `--interval N` - Screenshot every N seconds
+
+## Configuration
+
+**config.json** - Main configuration file with:
+- Whisper model selection (tiny/base/small/medium/large)
+- Device preferences (auto/cpu/mps/cuda) 
+- Processing intervals and quality settings
+- Backend selection (faster-whisper vs openai-whisper)
+
+**Critical Settings:**
+- `whisper_backend`: "faster-whisper" (recommended for Apple Silicon) or "openai-whisper"
+- `device`: "auto" (detects MPS/CUDA/CPU), "mps", "cuda", or "cpu"
+- `compute_type`: "auto", "int8", "float16", "float32"
+- `screenshot_interval`: seconds between frame captures
+
+## Data Storage Format
+
+The tool generates a comprehensive JSON file (`{video_name}_processed.json`) containing:
+- **metadata**: Video info, processing settings, timestamps
+- **transcript**: Complete segments with speaker labels and timing
+- **visual**: Frame data and visual-text relevance matching
+
+This allows instant re-export to different formats without reprocessing.
+
+## Apple Silicon Optimization
+
+The codebase is optimized for Apple Silicon (M1/M2/M3) with:
+- **faster-whisper backend**: 5x faster model loading, CTranslate2 optimizations
+- **MPS device detection**: Automatic Metal Performance Shaders usage
+- **int8 quantization**: Default for Apple Silicon for speed/quality balance
+- **Fallback mechanisms**: Graceful degradation to CPU when needed
+
+## Dependencies and Environment
+
+**Python Environment:**
+- Managed via virtual environment (venv/ or .venv/)
+- Python 3.9+ required
+- Supports both manual venv and mise tool management
+
+**Key Dependencies:**
+- **whisper/faster-whisper**: Speech recognition
+- **torch**: PyTorch for ML models
+- **opencv-python**: Video frame processing
+- **ffmpeg**: Audio/video manipulation (system dependency)
+- **pyannote-audio**: Speaker diarization (temporarily disabled)
+- **reportlab**: PDF generation
+- **markdown**: HTML conversion
+
+**System Requirements:**
 - macOS 10.15+ (Catalina or later)
-- Python 3.9+
-- FFmpeg for media processing
-- 8GB RAM minimum (16GB+ recommended for large models)
-- 5GB storage for AI models and dependencies
+- FFmpeg installed via Homebrew
+- 8GB RAM minimum (16GB+ for large models)
 
-### AI Model Setup
-- HuggingFace account for speaker diarization models
-- Local model storage for Whisper variants
-- Optional GPU acceleration for faster processing
+## Testing and Quality
 
-## Configuration Options
+Currently no formal test suite. Quality assurance through:
+- Processing sample videos with known characteristics
+- Verifying export format integrity
+- Cross-checking timestamp accuracy
+- Manual verification of speaker diarization results
 
-### Processing Settings
-- **Whisper Model Size**: Balance between speed and accuracy (tiny → large)
-- **Screenshot Intervals**: Configurable capture frequency (seconds)
-- **Speaker Sensitivity**: Minimum duration for speaker identification
-- **Visual Analysis**: Enable/disable CLIP-based screenshot intelligence
+## Known Issues and Temporary Disables
 
-### Output Customization
-- **Format Selection**: Markdown, HTML, or PDF export
-- **Image Quality**: Configurable JPEG compression for screenshots
-- **Timestamp Precision**: Second or sub-second level timestamps
-- **Speaker Labeling**: Automatic or manual speaker name assignment
+1. **Speaker Diarization**: Temporarily disabled due to pyannote-audio dependency conflicts
+2. **CLIP Visual Analysis**: Disabled due to transformers library issues
+3. **WeasyPrint PDF**: Replaced with ReportLab due to system library dependencies
 
-## File Structure
+The application includes comprehensive error handling and fallback mechanisms for these disabled features.
 
-```
-video-transcription-tool/
-├── video_transcriber.py      # Main application
-├── install_dependencies.sh   # Setup script
-├── config.json              # Configuration file
-├── requirements.txt         # Python dependencies
-├── output/                  # Generated transcripts and media
-│   ├── frames/             # Extracted screenshots
-│   ├── transcripts/        # Markdown outputs
-│   └── exports/            # HTML/PDF exports
-└── logs/                   # Processing logs
-```
+## Performance Characteristics
 
-## Output Format Example
+**Processing Speed** (depends on Whisper model):
+- tiny: ~2x real-time
+- base: ~1x real-time  
+- large: ~0.3x real-time
 
-### Markdown Structure
-```markdown
-# Transcript: quarterly_meeting
+**Export Speed** (from stored JSON):
+- Markdown: <1s
+- HTML: ~2s
+- PDF: ~3s (includes image embedding)
 
-**Generated:** 2025-08-04 14:30:25
-**Duration:** 01:23:45
-
-## Speakers
-- **SPEAKER_00** (John - CEO)
-- **SPEAKER_01** (Sarah - CTO)
-
-## Transcript
-
-### SPEAKER_00
-**[00:00:03]** Welcome everyone to today's quarterly review. 
-Let me share the performance dashboard.
-
-![Screenshot at 00:00:03](frame_0001_3.45s.jpg)
-
-**[00:00:15]** As you can see in this chart, our user growth 
-has exceeded targets by 23%.
-
-### SPEAKER_01
-**[00:00:32]** That's fantastic! Can you break down the 
-metrics by geographic region?
-```
-
-## Development Workflow
-
-### Setup Process
-1. Clone repository and run installation script
-2. Configure HuggingFace authentication for diarization
-3. Test with sample video file
-4. Customize configuration for specific use cases
-
-### Processing Pipeline
-1. Video validation and format checking
-2. Audio extraction and preprocessing
-3. Parallel transcription and frame extraction
-4. Speaker diarization and segment alignment
-5. Visual content analysis and matching
-6. Output generation in requested format
-
-### Quality Assurance
-- Automated testing with sample videos
-- Manual verification of speaker accuracy
-- Visual relevance scoring validation
-- Export format integrity checks
-
-## Performance Considerations
-
-### Processing Speed
-- **Tiny Model**: ~2x real-time processing
-- **Base Model**: ~1x real-time processing
-- **Large Model**: ~0.3x real-time processing
-
-### Accuracy Trade-offs
-- Smaller models process faster but may miss nuances
-- Larger models provide better accuracy for technical content
-- Speaker diarization accuracy depends on audio quality and speaker distinctiveness
-
-### Resource Management
-- Temporary file cleanup after processing
-- Configurable memory usage limits
-- Optional GPU acceleration support
-
-## Integration Possibilities
-
-### Workflow Integration
-- Command-line interface for automation
-- Batch processing capabilities for multiple files
-- Integration with video conferencing platforms
-- API endpoints for programmatic access
-
-### Output Consumption
-- Direct import into documentation systems
-- LLM prompt integration for content analysis
-- Search indexing for large video libraries
-- Integration with note-taking applications
-
-## Future Development
-
-### Planned Enhancements
-- Real-time processing during recording
-- Web-based interface for easier access
-- Cloud storage integration (S3, Google Drive)
-- Advanced speaker recognition with voice profiles
-- Automated summary generation using LLMs
-- Multi-language interface support
-
-### Potential Integrations
-- Zoom/Teams plugin development
-- Notion/Obsidian export capabilities
-- Vector database integration for semantic search
-- Custom speaker training for improved accuracy
-
-## Technical Notes
-
-### Dependencies Management
-- Virtual environment isolation for Python packages
-- Homebrew for system-level dependencies
-- Model caching for faster subsequent runs
-- Graceful fallbacks when optional features fail
-
-### Error Handling
-- Comprehensive logging for debugging
-- Graceful degradation when models unavailable
-- Input validation for supported video formats
-- Recovery mechanisms for interrupted processing
-
-### Security Considerations
-- Local-only processing for privacy
-- No cloud API dependencies for core functionality
-- Secure credential handling for optional services
-- Output sanitization for web exports
-
-This tool represents a complete solution for video content analysis and documentation, designed to bridge the gap between raw video content and structured, searchable text with preserved visual context.
+**Typical Output Sizes** (6-minute video):
+- Processed JSON: ~254KB
+- Markdown: ~8KB
+- HTML: ~15MB (embedded images)
+- PDF: ~3MB

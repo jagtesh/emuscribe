@@ -1,0 +1,10 @@
+#!/bin/bash
+# Quick transcriber command using uv or mise
+
+# Try uv first (fastest startup)
+if command -v uv &> /dev/null && [ -f ".venv/pyvenv.cfg" ]; then
+    exec uv run python main.py "$@"
+fi
+
+# Fallback to the full run.sh script
+exec ./run.sh "$@"
