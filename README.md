@@ -1,5 +1,7 @@
 # Video Transcription Tool
 
+<img src="emma.png" alt="Emma, the Emuscribe mascot" width="150" align="left" style="margin-right: 20px; margin-bottom: 10px;">
+
 A comprehensive macOS application for transcribing videos with locally hosted AI models, featuring speaker identification, intelligent screenshot capture, and multiple export formats.
 
 ## Pipeline Overview

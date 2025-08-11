@@ -77,22 +77,6 @@ whisper_models/
 *.aac
 *.m4a
 
-# Image files from processing
-frames/
-*.jpg
-*.jpeg
-*.png
-*.gif
-
-# Processed data files
-*_processed.json
-*_transcript.md
-*_transcript.html
-*_transcript.pdf
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
 # Testing and coverage
 htmlcov/
 .tox/
