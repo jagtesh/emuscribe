@@ -1,15 +1,14 @@
 # Emuscribe
 
-<img src="emma.png" alt="Emma, the Emuscribe mascot" width="150" align="left" style="margin-right: 20px; margin-bottom: 10px;">
-
-A comprehensive macOS application for transcribing videos with locally hosted AI models, featuring speaker identification, intelligent screenshot capture, and multiple export formats.
+| <img src="emma.png" alt="Emma, the Emuscribe mascot" width="300"/> | A comprehensive macOS application for transcribing videos with locally hosted AI models, featuring speaker identification, intelligent screenshot capture, and multiple export formats. |
+| --- | --- |
 
 ## Pipeline Overview
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Video Input   │───▶│   Processing     │───▶│    Output       │
+┌─────────────────┐    ┌──────────────────┐    ┌──────────────────┐
+│   Video Input   │───▶│   Processing     │───▶│    Output        │
 │   (.mp4, .mov)  │    │   Pipeline       │    │  (.md/.html/.pdf)│
-└─────────────────┘    └──────────────────┘    └─────────────────┘
+└─────────────────┘    └──────────────────┘    └──────────────────┘
                               │
                               ▼
                     ┌────────────────────┐
