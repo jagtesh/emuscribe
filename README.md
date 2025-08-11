@@ -1,4 +1,4 @@
-# Video Transcription Tool
+# Emuscribe
 
 <img src="emma.png" alt="Emma, the Emuscribe mascot" width="150" align="left" style="margin-right: 20px; margin-bottom: 10px;">
 
