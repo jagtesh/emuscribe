@@ -32,38 +32,42 @@ A comprehensive macOS application for transcribing videos with locally hosted AI
 
 ## Usage
 
-### Processing a Video (First Time)
+### Quick Commands (Recommended)
 
 ```bash
-# Basic processing
-python main.py process video.mp4
+# Basic processing - fastest startup with uv
+./transcribe process video.mp4
 
 # Custom format and settings
-python main.py process video.mp4 --format html --interval 20 --output ./results
+./transcribe process video.mp4 --format html --interval 20 --output ./results
 
 # Disable certain features
-python main.py process video.mp4 --no-diarization --no-visual
+./transcribe process video.mp4 --no-diarization --no-visual
+
+# Re-export from stored data (instant)
+./transcribe export output/video_processed.json --format pdf
 ```
 
-### Re-exporting from Stored Data
-
-Once you have processed a video, you can export to different formats instantly:
+### Alternative Commands
 
 ```bash
-# Export to HTML from stored data
-python main.py export output/video_processed.json --format html
+# Using the enhanced wrapper (works without uv)
+./run.sh process video.mp4
 
-# Export to PDF with custom output directory
-python main.py export output/video_processed.json --format pdf -o ./exports
-```
+# Direct python (requires manual venv activation)
+python main.py process video.mp4
 
-### Backward Compatibility
-
-The tool maintains backward compatibility. This still works:
-
-```bash
+# Legacy format (still supported)
 python main.py video.mp4 --format markdown
 ```
+
+### Command Comparison
+
+| Command | Speed | Requirements | Features |
+|---------|-------|--------------|----------|
+| `./transcribe` | ⚡ Fastest | uv + .venv | Clean errors, uv optimization |
+| `./run.sh` | 🚀 Fast | Any Python env | Auto-detection, verbose feedback |
+| `python main.py` | 🐌 Standard | Manual activation | Direct access |
 
 ## Storage Format
 
@@ -169,12 +173,48 @@ python main.py process video.mp4 --backend openai-whisper
 - macOS 10.15+ (Catalina or later)
 - Python 3.9+
 - FFmpeg for media processing
+- **uv** (Python package manager - required for `./transcribe` command)
 - 8GB RAM minimum (16GB+ recommended for large models)
 
 ### Setup
+
+#### Option 1: Install from PyPI (Coming Soon)
 ```bash
-# Run the installation script
-./install_dependencies.sh
+# Install the latest stable release
+pip install emuscribe
+
+# Or with uv for faster installation
+uv tool install emuscribe
+```
+
+#### Option 2: Development Setup with uv (Recommended)
+```bash
+# Install uv if not already installed
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# or
+brew install uv
+
+# Clone and install for development
+git clone https://github.com/jagtesh/emuscribe.git
+cd emuscribe
+uv venv .venv
+uv pip install -e .
+```
+
+#### Option 3: Automated Setup Script
+```bash
+# Smart installation script (detects uv, uses pyproject.toml)
+./install.sh
+```
+
+#### Option 4: Traditional Development Setup
+```bash
+# Manual pip installation for development
+git clone https://github.com/jagtesh/emuscribe.git
+cd emuscribe
+python3 -m venv venv
+source venv/bin/activate
+pip install -e .
 ```
 
 ## Configuration

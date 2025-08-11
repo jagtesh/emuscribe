@@ -35,8 +35,15 @@ Frame Extraction → Visual Analysis → Context Matching → Export Generation
 
 ### Setup and Installation
 ```bash
-# Install system dependencies and Python packages
+# Modern setup with uv (fastest)
+uv venv .venv
+uv pip install -e .
+
+# Automated setup script (detects uv, uses pyproject.toml)
 ./install.sh
+
+# Traditional pip setup
+python3 -m venv venv && source venv/bin/activate && pip install -e .
 
 # Alternative setup using mise (if present)
 mise install
@@ -101,23 +108,26 @@ The codebase is optimized for Apple Silicon (M1/M2/M3) with:
 
 ## Dependencies and Environment
 
-**Python Environment:**
-- Managed via virtual environment (venv/ or .venv/)
-- Python 3.9+ required
-- Supports both manual venv and mise tool management
+**Python Packaging:**
+- **pyproject.toml**: Modern Python packaging standard with all dependencies
+- **requirements.txt**: Legacy compatibility file (generated from pyproject.toml)
+- **Python 3.9+** required
+- **Editable install**: `pip install -e .` for development
 
-**Key Dependencies:**
-- **whisper/faster-whisper**: Speech recognition
-- **torch**: PyTorch for ML models
-- **opencv-python**: Video frame processing
-- **ffmpeg**: Audio/video manipulation (system dependency)
-- **pyannote-audio**: Speaker diarization (temporarily disabled)
-- **reportlab**: PDF generation
-- **markdown**: HTML conversion
+**Python Environment Options:**
+- **.venv/**: uv-managed virtual environment (preferred)
+- **venv/**: Traditional virtual environment (fallback)
+- **mise**: Tool-managed environment (optional)
+
+**Key Dependencies (from pyproject.toml):**
+- **Core AI**: torch, openai-whisper, faster-whisper
+- **Media Processing**: opencv-python, librosa, soundfile, numpy, scipy
+- **Document Export**: markdown, reportlab, Pillow
+- **Experimental**: pyannote-audio, transformers (disabled due to conflicts)
 
 **System Requirements:**
 - macOS 10.15+ (Catalina or later)
-- FFmpeg installed via Homebrew
+- FFmpeg + portaudio (installed via brew)
 - 8GB RAM minimum (16GB+ for large models)
 
 ## Testing and Quality

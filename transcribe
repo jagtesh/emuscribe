@@ -1,10 +1,33 @@
 #!/bin/bash
-# Quick transcriber command using uv or mise
+# Quick transcriber command using uv
 
-# Try uv first (fastest startup)
-if command -v uv &> /dev/null && [ -f ".venv/pyvenv.cfg" ]; then
-    exec uv run python main.py "$@"
+set -e  # Exit on error
+
+# Check if uv is available
+if ! command -v uv &> /dev/null; then
+    echo "❌ Error: uv is required but not found!"
+    echo ""
+    echo "Please install uv first:"
+    echo "  curl -LsSf https://astral.sh/uv/install.sh | sh"
+    echo "  # or"
+    echo "  brew install uv"
+    echo ""
+    echo "Alternatively, use ./run.sh which works with any Python environment."
+    exit 1
 fi
 
-# Fallback to the full run.sh script
-exec ./run.sh "$@"
+# Check if .venv exists
+if [ ! -d ".venv" ]; then
+    echo "❌ Error: .venv directory not found!"
+    echo ""
+    echo "Please create a virtual environment first:"
+    echo "  uv venv"
+    echo "  uv pip install -r requirements.txt"
+    echo "  # or run"
+    echo "  ./install.sh"
+    echo ""
+    exit 1
+fi
+
+# Use uv to run the transcriber (fastest startup)
+exec uv run emuscribe "$@"

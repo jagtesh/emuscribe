@@ -1,0 +1,123 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "emuscribe"
+dynamic = ["version"]
+description = "A comprehensive video transcription tool with AI, speaker diarization, and intelligent visual capture"
+readme = "README.md"
+authors = [
+    {name = "Jagtesh Chadha", email = "jagtesh@example.com"}
+]
+maintainers = [
+    {name = "Jagtesh Chadha", email = "jagtesh@example.com"}
+]
+license = {text = "MIT"}
+keywords = [
+    "transcription", "video", "audio", "whisper", "ai", "speech-to-text", 
+    "diarization", "speaker-identification", "apple-silicon", "macos"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: MacOS X",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education", 
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Markup :: Markdown",
+]
+requires-python = ">=3.9"
+dependencies = [
+    # Core AI/ML dependencies
+    "torch>=2.0.0",
+    "torchvision",
+    "torchaudio",
+    "openai-whisper>=20231117",
+    "faster-whisper>=0.9.0",
+    
+    # Audio/Video processing
+    "opencv-python>=4.8.0",
+    "librosa>=0.10.0",
+    "soundfile>=0.12.0",
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    
+    # Image processing
+    "Pillow>=10.0.0",
+    
+    # Document generation
+    "markdown>=3.5.0",
+    "reportlab>=4.0.0",
+]
+
+[project.optional-dependencies]
+# Currently disabled due to dependency conflicts
+experimental = [
+    "pyannote-audio",
+    "transformers",
+    "sentence-transformers", 
+    "clip-by-openai",
+    "weasyprint",
+]
+
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+emuscribe = "emuscribe.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/jagtesh/emuscribe"
+Repository = "https://github.com/jagtesh/emuscribe.git"
+Issues = "https://github.com/jagtesh/emuscribe/issues"
+Changelog = "https://github.com/jagtesh/emuscribe/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/jagtesh/emuscribe/blob/main/README.md"
+
+[tool.setuptools-scm]
+write_to = "src/emuscribe/_version.py"
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+
+[tool.ruff]
+target-version = "py39"
+line-length = 88
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "C",  # flake8-comprehensions
+    "B",  # flake8-bugbear
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["emuscribe*"]
+
+[tool.setuptools.package-data]
+emuscribe = ["py.typed"]

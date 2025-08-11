@@ -28,12 +28,13 @@ activate_venv() {
 # Activate virtual environment
 activate_venv
 
-# Check if main.py exists
-if [ ! -f "main.py" ]; then
-    echo "❌ main.py not found in current directory!"
+# Check if package is installed
+if ! python -c "import emuscribe" 2>/dev/null; then
+    echo "❌ emuscribe package not found! Please install with:"
+    echo "  pip install -e ."
     exit 1
 fi
 
 # Run the transcriber with all arguments passed through
 echo "🚀 Running video transcriber..."
-python main.py "$@"
+python -m emuscribe.cli "$@"

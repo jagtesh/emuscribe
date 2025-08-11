@@ -1,0 +1,30 @@
+# This file is generated from pyproject.toml for compatibility
+# For development, prefer: uv pip install -e .
+
+# Core AI/ML dependencies
+torch>=2.0.0
+torchvision
+torchaudio
+openai-whisper>=20231117
+faster-whisper>=0.9.0
+
+# Audio/Video processing
+opencv-python>=4.8.0
+librosa>=0.10.0
+soundfile>=0.12.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Image processing
+Pillow>=10.0.0
+
+# Document generation
+markdown>=3.5.0
+reportlab>=4.0.0
+
+# Optional dependencies (currently disabled due to conflicts)
+# pyannote-audio
+# transformers
+# sentence-transformers
+# clip-by-openai
+# weasyprint

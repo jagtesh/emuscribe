@@ -1,0 +1,45 @@
+# Include important metadata files
+include LICENSE
+include README.md
+include CHANGELOG.md
+include CONTRIBUTING.md
+include pyproject.toml
+include requirements.txt
+
+# Include configuration files
+include config.json
+include mise.toml
+
+# Include scripts
+include transcribe
+include run.sh
+include install.sh
+
+# Include GitHub workflows
+recursive-include .github *.yml *.yaml
+
+# Exclude development and build artifacts
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *.pyd
+global-exclude __pycache__
+global-exclude .DS_Store
+global-exclude .git*
+global-exclude *.egg-info/*
+global-exclude build/*
+global-exclude dist/*
+
+# Exclude output and temporary files
+global-exclude output/*
+global-exclude venv/*
+global-exclude .venv/*
+global-exclude *.log
+global-exclude .pytest_cache/*
+global-exclude .ruff_cache/*
+
+# Exclude video files
+global-exclude *.mp4
+global-exclude *.mov
+global-exclude *.avi
+global-exclude *.mkv
+global-exclude *.webm

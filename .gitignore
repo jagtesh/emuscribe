@@ -3,48 +3,11 @@ output/
 exports/
 results/
 
-# Python cache
+# Python cache and build
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-
-# Virtual environments
-.venv/
-venv/
-env/
-ENV/
-
-# Temporary files
-*.tmp
-*.log
-transcription.log
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Model cache directories
-.cache/
-models/
-whisper_models/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -58,18 +21,79 @@ parts/
 sdist/
 var/
 wheels/
-pip-wheel-metadata/
-share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
 
-# PyInstaller
-*.manifest
-*.spec
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
 
-# Unit test / coverage reports
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files and logs
+*.tmp
+*.log
+transcription.log
+
+# Model cache directories
+.cache/
+models/
+whisper_models/
+
+# Video files - too large for git
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.flv
+*.wmv
+*.m4v
+
+# Audio files
+*.wav
+*.mp3
+*.flac
+*.aac
+*.m4a
+
+# Image files from processing
+frames/
+*.jpg
+*.jpeg
+*.png
+*.gif
+
+# Processed data files
+*_processed.json
+*_transcript.md
+*_transcript.html
+*_transcript.pdf
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Testing and coverage
 htmlcov/
 .tox/
 .nox/
@@ -83,12 +107,15 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
-# Environments
+# Type checking and linting
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.ruff_cache/
+
+# Environment files
 .env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-*.mp4
+
+# setuptools-scm version file
+src/emuscribe/_version.py

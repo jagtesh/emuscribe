@@ -9,9 +9,9 @@ PROJECT_NAME = "{{ config_root | basename }}"
 _.python.venv = { path = ".venv", create = true }
 
 [tasks.install]
-description = "Install dependencies"
+description = "Install dependencies from pyproject.toml"
 alias = "i"
-run = "uv pip install -r requirements.txt"
+run = "uv pip install -e ."
 
 #[tasks.run]
 #description = "Run the application"
