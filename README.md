@@ -1,4 +1,4 @@
-# Video Transcription Tool
+# Emuscribe
 
 A comprehensive macOS application for transcribing videos with locally hosted AI models, featuring speaker identification, intelligent screenshot capture, and multiple export formats.
 
