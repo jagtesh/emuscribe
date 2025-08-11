@@ -1,5 +1,6 @@
 # This file is generated from pyproject.toml for compatibility
 # For development, prefer: uv pip install -e .
+# Requires Python 3.11+
 
 # Core AI/ML dependencies
 torch>=2.0.0

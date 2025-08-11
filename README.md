@@ -171,7 +171,7 @@ python main.py process video.mp4 --backend openai-whisper
 
 ### System Dependencies
 - macOS 10.15+ (Catalina or later)
-- Python 3.9+
+- **Python 3.11+** (for modern language features and performance)
 - FFmpeg for media processing
 - **uv** (Python package manager - required for `./transcribe` command)
 - 8GB RAM minimum (16GB+ recommended for large models)

@@ -107,11 +107,7 @@ class VideoTranscriber:
             "transcript": {
                 "segments": transcript_segments,
                 "speakers": sorted(
-                    list(
-                        set(
-                            seg.get("speaker", "Unknown") for seg in transcript_segments
-                        )
-                    )
+                    {seg.get("speaker", "Unknown") for seg in transcript_segments}
                 ),
             },
             "visual": {

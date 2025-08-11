@@ -111,7 +111,7 @@ The codebase is optimized for Apple Silicon (M1/M2/M3) with:
 **Python Packaging:**
 - **pyproject.toml**: Modern Python packaging standard with all dependencies
 - **requirements.txt**: Legacy compatibility file (generated from pyproject.toml)
-- **Python 3.9+** required
+- **Python 3.11+** required (for modern language features and performance)
 - **Editable install**: `pip install -e .` for development
 
 **Python Environment Options:**

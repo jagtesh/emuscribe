@@ -6,7 +6,7 @@ Thank you for your interest in contributing to emuscribe! This document provides
 
 ### Prerequisites
 - macOS 10.15+ (Catalonia or later)
-- Python 3.9+
+- **Python 3.11+** (for modern language features and performance)
 - FFmpeg and portaudio (installed via Homebrew)
 - uv (recommended) or pip
 
