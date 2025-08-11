@@ -1,0 +1,88 @@
+#!/bin/bash
+# Pre-commit hook for emuscribe
+# Runs ruff --fix and black on src/ directory
+#
+# To install this hook, copy it to .git/hooks/pre-commit:
+#   cp hooks/pre-commit .git/hooks/pre-commit
+#   chmod +x .git/hooks/pre-commit
+
+set -e
+
+echo "🔧 Running pre-commit hooks..."
+
+# Check if we're in a git repository
+if ! git rev-parse --git-dir > /dev/null 2>&1; then
+    echo "❌ Not in a git repository"
+    exit 1
+fi
+
+# Function to check if command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Get list of Python files that are staged for commit in src/
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '^src/.*\.py$' || true)
+
+if [ -z "$STAGED_FILES" ]; then
+    echo "✅ No Python files in src/ to check"
+    exit 0
+fi
+
+echo "📝 Found Python files to check:"
+echo "$STAGED_FILES"
+
+# Activate virtual environment if it exists
+if [ -d ".venv" ]; then
+    echo "🐍 Activating .venv virtual environment..."
+    source .venv/bin/activate
+elif [ -d "venv" ]; then
+    echo "🐍 Activating venv virtual environment..."
+    source venv/bin/activate
+fi
+
+# Run ruff with --fix on src/
+echo "🔍 Running ruff --fix on src/..."
+if command_exists ruff; then
+    if ! ruff check src/ --fix; then
+        echo "❌ ruff found issues that couldn't be auto-fixed"
+        echo "Please fix the remaining issues and commit again"
+        exit 1
+    fi
+    echo "✅ ruff --fix completed successfully"
+else
+    echo "⚠️  ruff not found, skipping ruff check"
+fi
+
+# Run black on src/
+echo "🎨 Running black on src/..."
+if command_exists black; then
+    if ! black src/; then
+        echo "❌ black formatting failed"
+        exit 1
+    fi
+    echo "✅ black formatting completed successfully"
+else
+    echo "⚠️  black not found, skipping black formatting"
+fi
+
+# Add any changes made by ruff/black back to the staging area
+echo "📦 Adding formatted files back to staging area..."
+for file in $STAGED_FILES; do
+    if [ -f "$file" ]; then
+        git add "$file"
+    fi
+done
+
+# Run final check to make sure everything passes
+echo "🔍 Running final ruff check..."
+if command_exists ruff; then
+    if ! ruff check src/; then
+        echo "❌ Final ruff check failed"
+        echo "Some issues still remain. Please review and fix them."
+        exit 1
+    fi
+fi
+
+echo "✅ All pre-commit hooks passed!"
+exit 0

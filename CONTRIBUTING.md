@@ -39,9 +39,31 @@ black src/
 # Lint with ruff
 ruff check src/
 
+# Auto-fix issues with ruff
+ruff check src/ --fix
+
 # Type checking (when configured)
 # mypy src/
 ```
+
+### Git Pre-commit Hook (Recommended)
+We provide a pre-commit hook that automatically runs ruff --fix and black on your code:
+
+```bash
+# Install the pre-commit hook
+cp hooks/pre-commit .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+
+# Now all commits will automatically format and lint your code
+git commit -m "Your commit message"
+```
+
+The pre-commit hook will:
+- ✅ Run `ruff check src/ --fix` to auto-fix linting issues
+- ✅ Run `black src/` to format code consistently  
+- ✅ Add any formatting changes back to the staging area
+- ✅ Perform a final ruff check to ensure everything passes
+- ❌ Block commits if there are unfixable linting errors
 
 ### Testing
 Currently, testing is done manually with sample videos. We welcome contributions to add a proper test suite.

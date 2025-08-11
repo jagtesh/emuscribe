@@ -10,10 +10,12 @@ include requirements.txt
 include config.json
 include mise.toml
 
-# Include scripts
+# Include scripts and hooks
 include transcribe
 include run.sh
 include install.sh
+recursive-include hooks *.py *.sh
+include hooks/pre-commit
 
 # Include GitHub workflows
 recursive-include .github *.yml *.yaml
